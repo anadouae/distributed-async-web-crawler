@@ -1,0 +1,48 @@
+services:
+  redis:
+    image: redis:7-alpine
+    command: ["redis-server", "--requirepass", "crawler_redis_secret"]
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "crawler_redis_secret", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: crawler
+      POSTGRES_PASSWORD: crawler
+      POSTGRES_DB: crawler
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U crawler -d crawler"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  crawler:
+    build: .
+    depends_on:
+      redis:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+    environment:
+      CRAWLER_REDIS_URL: redis://:crawler_redis_secret@redis:6379/0
+      CRAWLER_POSTGRES_DSN: postgresql+asyncpg://crawler:crawler@postgres:5432/crawler
+      CRAWLER_DEMO_MODE: "false"
+      CRAWLER_WORKER_COUNT: "8"
+      CRAWLER_MAX_CONCURRENCY: "128"
+      CRAWLER_MAX_DEPTH: "2"
+      CRAWLER_RUN_SECONDS: "30"
+      CRAWLER_RESPECT_ROBOTS: "true"
+    command: ["python", "-m", "crawler", "--seconds", "30", "-v"]
+
+volumes:
+  pgdata:
